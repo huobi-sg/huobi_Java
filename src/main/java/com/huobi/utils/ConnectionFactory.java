@@ -1,8 +1,18 @@
 package com.huobi.utils;
 
 import java.io.IOException;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,7 +41,30 @@ public class ConnectionFactory {
   private static ConnectionPool connectionPool =
       new ConnectionPool(20, 300, TimeUnit.SECONDS);
 
+  
+  
+  private static class TrustAllCerts implements X509TrustManager {
+      public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+      public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+      public X509Certificate[] getAcceptedIssuers() {return new X509Certificate[0];}
+  }
+  private static class TrustAllHostnameVerifier implements HostnameVerifier {
+      public boolean verify(String hostname, SSLSession session) {return true;}
+  }
+  
+  private static SSLSocketFactory createSSLSocketFactory() {
+      SSLSocketFactory ssfFactory = null;
+      try {
+          SSLContext sc = SSLContext.getInstance("TLSv1.3");
+          sc.init(null,  new TrustManager[] { new TrustAllCerts() }, new SecureRandom());
+          ssfFactory = sc.getSocketFactory();
+      } catch (Exception e) {e.printStackTrace();}
+      return ssfFactory;
+  }
+  
   private static final OkHttpClient client = new OkHttpClient.Builder()
+      .sslSocketFactory(createSSLSocketFactory(), new TrustAllCerts())
+      .hostnameVerifier(new TrustAllHostnameVerifier())
       .followSslRedirects(false)
       .followRedirects(false)
       .connectTimeout(5000, TimeUnit.MILLISECONDS)
@@ -57,6 +90,7 @@ public class ConnectionFactory {
           return response;
         }
       })
+      
       .build();
 
   private static final Logger log = LoggerFactory.getLogger(ConnectionFactory.class);
